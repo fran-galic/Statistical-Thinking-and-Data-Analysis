@@ -4,7 +4,7 @@
 library(tidyverse)
 
 # Učitavanje podataka
-data_path <- "SAP_Podaci/SapPodaci.csv"  # Putanja do datoteke
+data_path <- "SAP_Podaci/SapPodaci.csv"  # Putanja do datoteke - promjenit putanju
 studentData <- read_csv(data_path)
 
 # --- Pregled osnovnih informacija ---
