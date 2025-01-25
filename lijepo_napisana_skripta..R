@@ -4,7 +4,7 @@
 library(tidyverse)
 
 # Učitavanje podataka
-data_path <- "SAP_Podaci/SapPodaci.csv"  # Putanja do datoteke - promjenit putanju
+data_path <- "Podaci/student_data.csv"  # Putanja do datoteke - promjenit putanju
 studentData <- read_csv(data_path)
 
 # --- Pregled osnovnih informacija ---
@@ -42,6 +42,8 @@ nominal_factors <- c(
   "Mjob", "Fjob", "reason", "guardian"
 )
 studentData <- convert_to_factor(studentData, nominal_factors)
+#ispis za provjeru nominalnih i binarnih faktora
+str(studentData)
 
 # Pretvaranje u ordinalne faktore (sortirane kategorije)
 ordinal_factors <- list(
@@ -78,7 +80,13 @@ str(studentData)
 # Vizualni pregled (samo za razvojni proces)
 view(studentData)
 
-
+# Provjera svih faktora u studentData i ispis razina
+for (col in names(studentData)) {
+  if (is.factor(studentData[[col]])) {
+    cat("\nVarijabla:", col, "\n")
+    cat("Razine:", levels(studentData[[col]]), "\n")
+  }
+}
 
 
 # 2. Exploratory Data Analysis (EDA): Upoznavanje s podacima
@@ -213,7 +221,7 @@ if (nrow(high_cor) > 0) {
 # 1. pitanje: Jesu li prosječne konačne ocjene iz matematike različite između spolova?
 # Napomena: Konkretno gledamo ocjene iz matematike za 3. srednje. Ako je potrebno, možemo uključiti i preostale razrede.
 
-# 1. Predpostavke za t-test:
+# 1. Pretpostavke za t-test:
 # a) Nezavisnost uzoraka: 
 # - Pretpostavljamo da rezultati jednog učenika iz jedne grupe ne utječu na rezultate iz druge grupe.
 # b) Nasumičnost uzorka:
@@ -323,3 +331,195 @@ print(wilcox_test_result)
 # !! Komentari za asistenta:
 # 1. **Srednje vrijednosti - mogu li zaključiti da su srednje vrijednosti različite?** Iako smo utvrdili da postoji statistički značajna razlika u distribuciji ocjena, to ne znači nužno da su srednje vrijednosti različite.
 # 2. **Bootstrap metoda**: Možemo razmisliti o korištenju bootstrap metode za dodatnu provjeru.
+
+
+# Analiza 4. pitanja: Postoji li razlika u broju izostanka iz nastave?
+cat("Postoji li razlika u broju izostanak iz nastave?")
+# Ispisujemo broj izostanak iz matematike i portugalskog jezika
+cat("\nIzostanci iz matematike:\n")
+print(studentData$absences_mat)
+
+cat("\nIzostanci iz portugalskog jezika:\n")
+print(studentData$absences_por)
+
+# Racunamo koliko je ukupno izostanaka i od sad na dalje gledamo ukupne izostanke (matematika + portugalski)
+# Osim ako nije drugačije navedeno
+studentData$total_absences <- studentData$absences_mat + studentData$absences_por
+# Ispisujemo
+cat("\nUkupni izostanci:\n")
+print(studentData$total_absences)
+
+# Histogram izostanaka
+ggplot(studentData, aes(x = total_absences)) +
+  geom_histogram(binwidth = 1, fill = "lightblue", color = "black", alpha = 0.7) +
+  labs(
+    title = "Distribucija izostanaka",
+    x = "Broj izostanaka",
+    y = "Broj učenika"
+  ) +
+  theme_minimal()
+
+# Sažetak statistike za izostanke
+summary(studentData$total_absences)
+# Boxplot izostanaka
+ggplot(studentData, aes(y = total_absences)) +
+  geom_boxplot(fill = "lightgreen", color = "black", alpha = 0.7) +
+  labs(
+    title = "Boxplot izostanaka",
+    x = "",
+    y = "Broj izostanaka"
+  ) +
+  theme_minimal()
+
+# IQR metoda za identifikaciju outliera
+Q1 <- quantile(studentData$total_absences, 0.25)
+Q3 <- quantile(studentData$total_absences, 0.75)
+IQR <- Q3 - Q1
+
+# Definicija outliera
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
+# Filtriranje outliera
+cleaned_data <- studentData[studentData$total_absences >= lower_bound & studentData$total_absences <= upper_bound, ]
+
+# Provjera rezultata nakon uklanjanja outliera
+summary(cleaned_data$total_absences)
+# Boxplot izostanaka
+ggplot(cleaned_data, aes(y = total_absences)) +
+  geom_boxplot(fill = "lightgreen", color = "black", alpha = 0.7) +
+  labs(
+    title = "Boxplot izostanaka",
+    x = "",
+    y = "Broj izostanaka"
+  ) +
+  theme_minimal()
+
+
+# Sad radimo analizu između izostanaka i mjesta stanovanja
+# H0: Nema razlike u iznosu izostanaka između učenika iz urbanih i ruralnih područja.
+# H1: Učenici iz ruralnih područja imaju veće izostanke od učenika iz urbanih područja.
+
+# Shapiro-Wilk normality test za urbane i ruralne izostanke
+cat("\nShapiro-Wilk test za normalnost (urbano):\n")
+shapiro.test(studentData$total_absences[studentData$address == "U"])
+cat("\nShapiro-Wilk test za normalnost (ruralno):\n")
+shapiro.test(studentData$total_absences[studentData$address == "R"])
+
+# Wilcoxon rank sum test (Mann-Whitney U test)
+# Zato što podaci nisu normalno distribuirani koristimo ovaj neparametarski test koji omogućuje usporedbu dviju nezavisnih skupina na temelju njihovih rangova, a ne na pretpostavci o normalnosti
+wilcox_result <- wilcox.test(total_absences ~ address, data = studentData)
+
+# Prikaz rezultata testa
+print(wilcox_result)
+
+# P-vrijednost > 0.05 i zato ne možemo odbaciti nultu hipotezu
+# Zaključujemo da nema razlike u iznosu izostanaka između učenika iz ruralnih i urbanih područja
+
+# Vizualizacija izostanaka po mjestu stanovanja
+# Box plot za ukupne izostanke po mjestu stanovanja
+ggplot(studentData, aes(x = address, y = total_absences, fill = address)) + 
+  geom_boxplot(color = "black", alpha = 0.7) + 
+  labs(
+    title = "Distribucija ukupnih izostanaka po mjestu stanovanja",
+    x = "Mjesto stanovanja",
+    y = "Ukupni izostanci"
+  ) + 
+  scale_fill_manual(values = c("lightgreen", "lightcoral")) + 
+  theme_minimal()
+
+# Testiramo postoji li razlika u broju izostanaka i konzumacije alkohola tijekom tjedna
+# H0: Ne postoji razlika u distribuciji zmeđu različitih grupa konzumacije alkohola tjedno.
+# H1: Postoji razlika u distribuciji zmeđu različitih grupa konzumacije alkohola tjedno
+
+# Provjera normalnosti za izostanke
+shapiro_test_absences <- shapiro.test(studentData$total_absences)
+
+# Ispis rezultata
+print(shapiro_test_absences)
+
+# Provjera normalnosti za Dalc (konzumacija alkohola)
+shapiro_test_dalc <- shapiro.test(studentData$Dalc)
+
+# Ispis rezultata
+print(shapiro_test_dalc)
+
+
+# Ako p-vrijednost < 0.05, podaci nisu normalni i možemo koristiti Kruskal-Wallis test
+
+
+# Kruskal-Wallis test za izostanke u odnosu na konzumaciju alkohola tjedno
+kruskal_test_alcohol <- kruskal.test(total_absences ~ Dalc, data = studentData)
+
+# Ispis rezultata testa
+print(kruskal_test_alcohol)
+
+# Budući da je p-vrijednost < 0.05 odbacujemo nultu hipotezu 
+# Možemo zaključiti da da postoji statistički značajna razlika u izostancima između grupa
+# Ovaj test ne daje izravno odgovor na to je li viša konzumacija alkohola povezana s većim brojem izostanaka,
+# ali daje pokazatelj da razlike u izostancima postoje među grupama
+
+# Post-hoc analiza
+# Koristi se za parne usporedbe između svih kombinacija grupa, nakon što je Kruskal-Wallis pokazao postojanje razlika
+# Pairwise Wilcoxon rank sum test za izostanke po konzumaciji alkohola tjedno
+pairwise_wilcox_alcohol <- pairwise.wilcox.test(studentData$total_absences, studentData$Dalc, 
+                                                p.adjust.method = "BH")
+
+# Ispis rezultata
+print(pairwise_wilcox_alcohol)
+
+# Postoji razlika između grupa 1 i 3
+# Odbacujemo H0 koja kaze da nema razlike između tih dviju grupa
+# "Na temelju pairwise Wilcoxon testa, 
+# otkriveno je da postoji statistički značajna razlika u broju izostanaka između učenika 
+# koji rijetko konzumiraju alkohol (grupa 1) i onih koji češće konzumiraju alkohol (grupa 3). 
+# Učenici u grupi 3 (češća konzumacija alkohola) imaju više izostanaka u usporedbi s 
+# učenicima u grupi 1 (rijetka konzumacija alkohola), što može sugerirati da 
+# konzumacija alkohola utječe na povećanje broja izostanaka."
+
+
+# Srednje vrijednosti izostanaka po grupama
+group_means <- tapply(studentData$total_absences, studentData$Dalc, mean)
+# Ispis srednjih vrijednosti
+print(group_means)
+
+# Pretpostavljamo da su grupe 1 (rijetko) i 3 (češće)
+mean_group_1 <- group_means[1]
+mean_group_3 <- group_means[3]
+
+# Izračunaj procentualnu razliku između grupe 1 i grupe 3
+percentage_diff <- ((mean_group_3 - mean_group_1) / mean_group_1) * 100
+cat("Procentualna razlika između grupe 1 i grupe 3:", percentage_diff, "%\n")
+
+# Boxplot za izostanke prema konzumaciji alkohola tjedno
+ggplot(studentData, aes(x = factor(Dalc), y = total_absences, fill = factor(Dalc))) +
+  geom_boxplot() +
+  labs(
+    title = "Izostanci u odnosu na konzumaciju alkohola tjedno",
+    x = "Konzumacija alkohola tjedno",
+    y = "Izostanci"
+  ) +
+  scale_fill_brewer(palette = "Set3") +
+  theme_minimal()
+
+# Pretvori Dalc u numeričku varijablu
+studentData$Dalc <- as.numeric(as.character(studentData$Dalc))
+
+# Korelacija između konzumacije alkohola i izostanaka (Spearman)
+cor_alcohol_absences <- cor(studentData$Dalc, studentData$total_absences, method = "spearman")
+# Ispis rezultata
+cat("Spearman korelacija između konzumacije alkohola i izostanaka: ", cor_alcohol_absences, "\n")
+
+# Procentualna razlika ukazuje na značajnu razliku između grupa (1 i 3)
+# u prosječnim brojevima izostanaka, dok Spearmanova korelacija pokazuje da ta razlika 
+# nije dovoljno jaka ili dosljedna kroz cijeli skup podataka
+
+# Ukratko, postoji statistički značajna razlika u izostancima među grupama, 
+# a povećanje konzumacije alkohola može biti povezano s višim izostancima, 
+# ali ta povezanost nije jako jaka kad gledamo cijeli skup podataka
+
+
+
+
+
+
