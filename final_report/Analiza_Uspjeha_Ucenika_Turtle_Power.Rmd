@@ -1,0 +1,613 @@
+---
+title: "Projekt: Analiza uspjeha učenika"
+author: "Fran Galić, Jana Gazdek, Vedran Maksić, Vjekoslav Gračaković"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  word_document: default
+urlcolor: blue
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+library(tidyverse)
+library(pROC)
+library(caret)
+library(gridExtra)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Motivacija i opis problema
+
+Podaci o učenicima prikupljeni su kako bi se istražili čimbenici koji utječu na njihov školski uspjeh.
+Cilj je razumjeti kako različiti aspekti, poput vremena provedenog u učenju, obiteljske podrške i izostanaka,
+doprinosi postignućima učenika. Ova analiza omogućuje bolji uvid u područja ključna za poboljšanje
+obrazovnih rezultata te za donošenje preporuka u svrhu optimizacije obrazovnog procesa.
+
+# Učitavanje i uređivanje podatkovnog skupa
+
+## Učitavanje i proučavanje podatkovnog skupa 
+
+Podatkovni skup učitavamo u varijablu `studentData` kako bismo ga mogli dalje analizirati.
+
+```{r}
+studentData <- read_csv("student_data.csv")
+```
+
+Prikaz prvih nekoliko redaka kako bismo vidjeli primjere vrijednosti u svakoj koloni.
+
+```{r}
+head(studentData)
+```
+
+Kratak uvid u tipove podataka i strukturu podatkovnog okvira.
+
+```{r}
+glimpse(studentData)
+```
+
+\newpage
+
+## Uređivanje podataka podatkovnog skupa
+
+### Provjera nedostajućih vrijednosti:
+```{r}
+missing_vals <- sum(is.na(studentData))
+cat("Ukupno nedostajućih vrijednosti:", missing_vals)
+```
+
+### Pretvaranje nominalnih kategorija u faktore
+
+Kako bismo podatke prilagodili za analizu, pojedine varijable pretvaramo u faktore.
+Razlikujemo nominalne faktore (nesortirane kategorije) i ordinalne faktore (kategorije s prirodnim poretkom). Ovakva priprema olakšava kasniju primjenu statističkih testova i modela.
+
+```{r}
+convert_to_factor <- function(data, cols) {
+  for (col in cols) {
+    data[[col]] <- as.factor(data[[col]])
+  }
+  return(data)
+}
+
+nominal_factors <- c(
+  "school", "sex", "address", "famsize", "Pstatus", "schoolsup", "famsup",
+  "paid_mat", "paid_por", "activities", "nursery", "higher", "internet", 
+  "romantic", "Mjob", "Fjob", "reason", "guardian"
+)
+studentData <- convert_to_factor(studentData, nominal_factors)
+```
+
+### Pretvaranje ordinalnih kategorija u faktore
+
+```{r}
+ordinal_factors <- list(
+  famrel       = 1:5,
+  freetime     = 1:5,
+  goout        = 1:5,
+  Dalc         = 1:5,
+  Walc         = 1:5,
+  health       = 1:5,
+  traveltime   = 1:4,
+  studytime    = 1:4
+)
+
+for (col in names(ordinal_factors)) {
+  studentData[[col]] <- factor(studentData[[col]], levels = ordinal_factors[[col]], ordered = TRUE)
+}
+```
+
+Prikaz prvih nekoliko redaka nakon uređivanja podataka.
+
+```{r}
+head(studentData)
+```
+
+# Analiza podatkovnog skupa
+
+## Jesu li prosječne konačne ocjene iz matematike različite između spolova?
+
+Jedan od ključnih čimbenika u analizi školskog uspjeha je pitanje postoje li razlike među spolovima u postignutim rezultatima. Iako postoje razni stereotipi, ovdje ćemo ispitati postoji li statistički značajna razlika u konačnim ocjenama iz matematike (G3_mat) između djevojaka (F) i dječaka (M).
+
+### Postavka hipoteza
+
+$H_0:~~\mu_{\text{G3\_mat dječaka}} = \mu_{\text{G3\_mat djevojaka}}$
+
+$H_1:~~\mu_{\text{G3\_mat dječaka}} \neq \mu_{\text{G3\_mat djevojaka}}$
+
+### Boxplot i kratka interpretacija
+```{r}
+ggplot(studentData, aes(x = sex, y = G3_mat, fill = sex)) +
+  geom_boxplot() +
+  labs(
+    title = "Konačna ocjena iz matematike po spolu",
+    x = "Spol",
+    y = "G3_mat"
+  ) +
+  theme_minimal()
+```
+Vizualno, boxplot ne sugerira preveliku razliku između dviju srednjih vrijednosti, no tek formalnim testom možemo utvrditi je li ta razlika statistički značajna.
+
+### Provjera normalnosti podataka
+Za formalno testiranje razlika između srednjih vrijednosti odabrali smo t-test. T-test pretpostavlja (između ostalog) da su podaci u svakoj skupini približno normalno distribuirani. Provjerit ćemo to grafički (QQ-plot) i Shapiro-Wilkovim testom.
+```{r}
+female_data <- studentData$G3_mat[studentData$sex == "F"]
+male_data   <- studentData$G3_mat[studentData$sex == "M"]
+
+qqnorm(female_data, main = "QQ Plot za djevojke")
+qqline(female_data, col = "red")
+
+qqnorm(male_data, main = "QQ Plot za dječake")
+qqline(male_data, col = "red")
+```
+
+Većina točaka je blizu dijagonale, no pri najnižim vrijednostima (0-2) vidimo veći otklon (floor efekt) - određen broj učenika ostvario je vrlo niske ocjene, pa su se “nagomilali” u donjem dijelu raspodjele. Najviše vrijednosti također pokazuju malo odvajanje od dijagonale. Sveukupno, raspodjele su "grubo" normalne s blagim odstupanjem u repovima.
+
+Provodimo Shapiro-Wilkov test normalnosti:
+```{r}
+shapiro.test(female_data)
+shapiro.test(male_data)
+```
+
+\newpage
+Rezultati analize pokazuju da smo dobili nisku p-vrijednost, što nam omogućuje da pri razini značajnosti od 0,05 odbacimo nul-hipotezu i zaključimo da podaci „statistički“ odstupaju od normalne distribucije. Unatoč tome, s obzirom na robusnost t-testa u odnosu na pretpostavku normalnosti, kao i na dostatno velik uzorak, možemo nastaviti s primjenom t-testa bez potrebe za transformacijama podataka. Stoga se t-test i dalje može smatrati valjanim za ovu analizu.
+
+### Provjera jednakosti varijanci:
+T-test također pretpostavlja (u klasičnoj varijanti) jednake varijance. Provjerit ćemo F-testom. No, F-test i sam pretpostavlja normalnost, pa je ponekad osjetljiv na odudaranja. Ipak, obavit ćemo ga informativno:
+
+```{r}
+var.test(G3_mat ~ sex, data = studentData)
+```
+Rezultati F-testa za usporedbu varijanci završnih ocjena iz matematike pokazuju da nema statistički značajne razlike u varijancama (p = 0,5223). Budući da je p-vrijednost značajno veća od 0,05, ne odbacujemo nul-hipotezu i zaključujemo da su varijance ocjena slične za obje skupine.
+ 
+### Provođenje t-testa:
+Provodimo t-test za nepoznate, ali jednake varijance:
+```{r}
+t.test(G3_mat ~ sex, data = studentData, var.equal = TRUE)
+```
+
+\newpage
+### Konačni zaključak i objašnjenje
+
+Rezultati t-testa pokazuju statistički značajnu razliku u prosječnim konačnim ocjenama iz matematike između učenika i učenica.
+
+Prosječna ocjena učenika iznosi 11,10, dok je prosječna ocjena učenica 9,89. Budući da je p-vrijednost manja od uobičajene razine značajnosti (0,05), možemo zaključiti da postoji značajna razlika u korist učenika.
+
+Interval pouzdanosti od -2,15 do -0,27 dodatno potvrđuje da je prosječna ocjena učenika značajno viša od ocjene učenica.
+
+#### Kratak osvrt na izbor testa usprkos narušenoj normalnosti
+Iako Shapiro-Wilk test možda sugerira da raspodjela nije "idealno normalna", t-test je razmjerno robustan - pogotovo uz veći broj ispitanika. Za ekstremnija odstupanja mogli bismo razmisliti o neparametrijskom testu (npr. Mann-Whitney), no ovdje zaključujemo da je odstupanje dovoljno blago da je t-test prihvatljiv, čime dobivamo odgovor na naše istraživačko pitanje.
+
+
+## Postoji li razlika u prvoj ocjeni iz matematike s obzirom na mjesto stanovanja učenika?
+Cilj je testirati postoji li statistički značajna razlika između ove dvije grupe te analizirati distribuciju ocjena. U podatkovnom skupu stupac G1_mat predstavlja prvu ocjenu iz matematika (između 0 i 20). Stupac address predstavlja mjesto stanovanja učenika, a poprima dvije vrijednosti U za (urbano područje) i R (ruralno područje).
+
+### Učitavanje i pregled podataka
+
+funkcija za pronalaženje stršečih vrijednosti
+```{r}
+find_outliers <- function(x) {
+  Q1 <- quantile(x, 0.25, na.rm = TRUE)
+  Q3 <- quantile(x, 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  outliers <- x[x < lower_bound | x > upper_bound]
+  return(outliers)
+}
+```
+
+U nastavku prikazujemo osnovne statističke mjere za ocjene G1_mat, uključujući minimum, prvi kvartil (Q1), medijan, srednju vrijednost, treći kvartil (Q3) i maksimum, kako za sve učenike u skupini, tako i zasebno za urbane i ruralne učenike.
+
+```{r load-data}
+table(studentData$address)
+summary(studentData$G1_mat)
+data_U <- subset(studentData, address == "U")
+data_R <- subset(studentData, address == "R")
+summary(data_U$G1_mat)
+summary(data_R$G1_mat)
+```
+
+Uočavamo da je broj urbanih učenika znatno veći u skupu podataka. Što se tiče deskriptivnih statističkih mjera, ne primjećuju se značajne razlike između ruralnih i urbanih skupina.
+
+### Vizualizacija podataka
+
+Boxplot omogućuje pregled medijana, kvartila i outlinera za obje grupe.
+
+```{r boxplot }
+ggplot(studentData, aes(x = address, y = G1_mat, fill = address)) +
+  geom_boxplot() +
+  labs(
+    title = "Razlika u prvoj ocjeni iz matematike prema mjestu stanovanja",
+    x = "Tip adrese (Urbano ili Ruralno)",
+    y = "Prva ocjena iz matematike (G1)"
+  ) +
+  theme_minimal()
+```
+
+Na temelju grafa možemo procijeniti da su podaci simetrični i ne postoji značajna razlika u centralnim tendencijama između urbanih i ruralnih učenika.
+
+Također možemo primjetiti da postoji jedan outliner (ocjena 19) za skup podataka kojeg čine učenici iz ruralnih područja. Za testiranje normalnosti razmotrit ćemo micanje outliera.
+
+```{r}
+rural_outliers <- find_outliers(studentData$G1_mat[studentData$address == "R"])
+print(rural_outliers)
+```
+\newpage
+### Histogram za detaljniji pregled distribucije
+
+Histogram pruža uvid u raspodjelu podataka, omogućujući procjenu njihove približne normalnosti. Na temelju ovog pregleda, možemo odlučiti je li potrebna transformacija podataka ili primjena neparametarskih metoda.
+
+```{r histogram}
+ggplot(studentData, aes(x = G1_mat, fill = address)) +
+  geom_histogram(
+    position = "dodge",
+    binwidth = 1,  # Postavi širinu binova
+    alpha = 0.7    # Postavi prozirnost za bolju vizualizaciju
+  ) +
+  labs(
+    title = "Histogram prve ocjene iz matematike (G1_mat) prema adresi",
+    x = "Ocjena G1_mat",
+    y = "Frekvencija",
+    fill = "Adresa"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(values = c("U" = "lightblue", "R" = "lightcoral"))
+```
+
+Grafovi upućuju na to da podaci mogu biti približno normalno distribuirani.
+
+### Q-Q plotovi za testiranje normalnosti podataka
+```{r qq-plots, fig.width=8, fig.height=5}
+qqnorm(studentData$G1_mat[studentData$address == "U"], 
+       main = "Q-Q plot: Urbani učenici", pch = 19, col = "blue")
+qqline(studentData$G1_mat[studentData$address == "U"], col = "red", lwd = 2)
+qqnorm(studentData$G1_mat[studentData$address == "R"], 
+       main = "Q-Q plot: Ruralni učenici", pch = 19, col = "green")
+qqline(studentData$G1_mat[studentData$address == "R"], col = "red", lwd = 2)
+```
+
+Q-Q plot za urbane učenike: podaci vidljivo odstupaju od crvene linije, osobito u krajevima (repovima). Ovo sugerira da podaci za urbane učenike ne prate normalnu distribuciju.
+
+Q-Q plot za ruralne učenike: podaci prate crvenu liniju puno bliže, s manjim odstupanjima u krajevima. Ovo sugerira da podaci za ruralne učenike mogu biti približno normalno distribuirani.
+### Test normalnosti (Shapiro-Wilk test) za G1_mat ocjene za urbane i ruralne učenike 
+Izvršit ćemo dva testa normalnosti. Prvi test će obuhvatiti G1_mat ocjene učenika koji žive u urbanim područjima, dok će drugi test obuhvatiti G1_mat ocjene učenika iz ruralnih područja.
+
+### Postavka hipoteza
+
+$H_0: {\text{Podaci dolaze iz populacije koja je normalno distribuirana.}}$
+
+$H_1: {\text{Podaci dolaze iz populacije koja nije normalno distribuirana.}}$
+
+\newpage
+Shapiro-Wilk test ocjena za urbane učenike:
+```{r shapiro-test}
+shapiro.test(studentData$G1_mat[studentData$address == "U"])
+```
+
+Shapiro-Wilk test ocjena za ruralne učenike:
+```{r shapiro-test2}
+shapiro_test_R <- shapiro.test(studentData$G1_mat[studentData$address == "R"])
+```
+
+```{r shapiro-test3}
+shapiro_test_R_no_outliers <- shapiro.test(studentData$G1_mat[studentData$address == "R" & studentData$G1_mat != 19])
+print(shapiro_test_R_no_outliers)
+```
+Rezultat testa normalnosti za urbane učenike pokazuje p-vrijednost od 3.486e-05, što je znatno niže od 0.05, stoga odbacujemo nul-hipotezu u korist alternativne i zaključujemo da G1_mat ocjene učenika koji žive na urbanim područjima nisu normalno distribuirane.
+
+Za ruralne učenike, rezultat testa normalnosti daje p-vrijednost od 0.01059, koja je manja od 0.05, što također vodi do odbacivanja nul-hipoteze u korist alternativne, te zaključujemo da G1_mat ocjene učenika koji žive na ruralnim područjima nisu normalno distribuirane.
+
+Kada uklonimo outliere iz skupa podataka za ruralne učenike, p-vrijednost ostaje ispod 0.05 i iznosi 0.01412, što ukazuje na to da ni nakon uklanjanja outliera, G1_mat ocjene za ruralne učenike i dalje nisu normalno distribuirane.
+
+Rezultati testova normalnosti sugeriraju da podaci nisu normalno distribuirani, unatoč tome što histogrami upućuju na moguću normalnost. Q-Q plot za urbane učenike pokazuje značajna odstupanja u repovima, što dodatno potvrđuje nenormalnost distribucije podataka. Zbog niske p-vrijednosti i rezultata Q-Q plota, odbacujemo pretpostavku normalnosti za urbane učenike. S druge strane, za ruralne učenike pretpostavka normalnosti je nešto prihvatljivija, no s obzirom na p-vrijednost, odlučujemo odbaciti pretpostavku normalnosti i za ovu skupinu.
+
+Iako t-test zahtijeva normalnost distribucije podataka, on je relativno robustan na odstupanja od normalnosti, osobito u slučajevima s većim brojem uzoraka. Međutim, kako bismo se odlučili za rigorozniji pristup koji se bolje uklapa u naš istraživački okvir, odlučujemo koristiti Wilcoxon test, koji je neparametarski i ne zahtijeva pretpostavku normalnosti. Ovaj pristup također omogućuje da se naš postupak razlikuje od postupka u prvom istraživačkom pitanju, čime smo spremni izabrati test koji je prikladniji za specifične uvjete našeg skupa podataka.
+
+### Wilcoxon test 
+Budući da podaci nisu normalno distribuirani, koristimo Wilcoxon test za ispitivanje razlika između dvije grupe.
+
+### Postavka hipoteza
+
+$H_0: {\text{Ne postoji značajna razlika u distribuciji ocjena G1\_mat između urbanih i ruralnih učenika.}}$
+
+$H_1: {\text{Postoji značajna razlika u distribuciji ocjena G1\_mat između urbanih i ruralnih učenika.}}$
+
+```{r wilcox-test}
+wilcox_test <- wilcox.test(G1_mat ~ address, data = studentData)
+print(wilcox_test)
+```
+
+### Rezultat i zaključak: 
+P-vrijednost iznosi 0.1432, što je veće od 0.05, stoga ne odbacujemo nul-hipotezu na razini značajnosti od 0.05. Na temelju ovog uzorka, ne možemo donijeti zaključak o postojanju značajne razlike u ocjenama G1_mat između urbanih i ruralnih učenika.
+
+
+
+
+## Možemo li predvidjeti prolaz iz završnog ispita iz jezika na temelju sociodemografskih varijabli poput spola, obrazovanja roditelja i veličine obitelji?
+
+Pitanje predviđanja uspjeha na završnom ispitu iz jezika sve više postaje važno u kontekstu obrazovne analize, jer može pomoći u razumijevanju faktora koji utječu na akademske rezultate. Korištenjem različitih statističkih metoda, nastojimo utvrditi koliko ove varijable mogu biti korisni prediktori u modeliranju vjerojatnosti prolaza na ispitu.
+
+### Kreiranje binarne varijable za prolaz
+
+Za analizu prolaznosti na završnom ispitu iz jezika, kreiramo binarnu varijablu passed_por koja označava prolaz (1) ili neprolaz (0) na temelju ocjene iz ispita, gdje je prolaz definiran kao ocjena veća ili jednaka 10. Ova varijabla se koristi kao ovisna varijabla u modelu logističke regresije.
+
+```{r}
+studentData <- studentData %>%
+  mutate(passed_por = ifelse(G3_por >= 10, 1, 0))  # 1 = prošao, 0 = nije prošao
+studentData$passed_por <- as.factor(studentData$passed_por)
+```
+
+### Distribucija prolaza na završnom ispitu iz jezika
+```{r}
+table(studentData$passed_por)
+```
+
+Na temelju varijable passed_por, 341 student (91.6%) uspješno je položio završni ispit iz jezika, dok je 29 studenata (8.4%) nije prošlo. Ova neravnoteža u distribuciji podataka može značajno utjecati na performanse modela, osobito u pogledu prepoznavanja manjinske klase.
+
+### Vizualizacija prolaznosti na temelju spola i veličine obitelji
+
+U nastavku su prikazane dvije vizualizacije prolaznosti na temelju sociodemografskih varijabli: spola i veličine obitelji. Prva vizualizacija prikazuje odnos između spola i prolaznosti, dok druga prikazuje povezanost između veličine obitelji i prolaznosti na završnom ispitu iz jezika.
+
+```{r}
+plot1 <- ggplot(studentData, aes(x = sex, fill = passed_por)) +
+  geom_bar(position = "fill", color = "black") +
+  labs(
+    title = "Prolaz jezika na temelju spola",
+    x = "Spol",
+    y = "Proporcija",
+    fill = "Prolaz"
+  ) +
+  scale_fill_manual(values = c("lightcoral", "lightblue")) +
+  theme_minimal()
+
+plot2 <- ggplot(studentData, aes(x = famsize, fill = passed_por)) +
+  geom_bar(position = "fill", color = "black") +
+  labs(
+    title = "Prolaz jezika na temelju veličine obitelji",
+    x = "Veličina obitelji",
+    y = "Proporcija",
+    fill = "Prolaz"
+  ) +
+  scale_fill_manual(values = c("lightcoral", "lightblue")) +
+  theme_minimal()
+
+grid.arrange(plot1, plot2, ncol = 1)
+```
+Iz vizualizacije se može zaključiti da je veći postotak muških studenata koji nisu prošli ispit iz jezika u odnosu na ženske studente.
+Također, uočljivo je da studenti iz većih obitelji imaju nešto veću vjerojatnost za prolaz na završnom ispitu. 
+
+### Vizualizacija prolaznosti na temelju obrazovanja majke i oca
+U nastavku su prikazane dvije vizualizacije koje prikazuju prolaznost na temelju obrazovanja majke i obrazovanja oca. Obje vizualizacije koriste barplotove za prikaz proporcija studenata koji su prošli ispit u odnosu na njihov sociodemografski faktor.
+
+```{r}
+
+plot1 <- ggplot(studentData, aes(x = Medu, fill = passed_por)) +
+  geom_bar(position = "fill", color = "black") +
+  labs(
+    title = "Prolaz jezika na temelju obrazovanja majke",
+    x = "Obrazovanje majke",
+    y = "Proporcija",
+    fill = "Prolaz"
+  ) +
+  scale_fill_manual(values = c("lightcoral", "lightblue")) +
+  theme_minimal()
+
+plot2 <- ggplot(studentData, aes(x = Fedu, fill = passed_por)) +
+  geom_bar(position = "fill", color = "black") +
+  labs(
+    title = "Prolaz jezika na temelju obrazovanja oca",
+    x = "Obrazovanje oca",
+    y = "Proporcija",
+    fill = "Prolaz"
+  ) +
+  scale_fill_manual(values = c("lightcoral", "lightblue")) +
+  theme_minimal()
+
+grid.arrange(plot1, plot2, ncol = 1)
+```
+Vizualizacije upućuju na to da ni obrazovanje majke ni oca nemaju značajan utjecaj na prolaznost na završnom ispitu.
+
+### Model logističke regresije
+Na temelju odabranih sociodemografskih faktora (spol, veličina obitelji, obrazovanje majke, obrazovanje oca, bračni status roditelja) izrađujemo logistički regresijski model s ciljem predviđanja prolaznosti na završnom ispitu iz jezika.
+```{r}
+logistic_model <- glm(
+  passed_por ~ sex + famsize + Medu + Fedu + Pstatus, 
+  data = studentData, 
+  family = binomial
+)
+```
+
+### Sažetak modela
+Rezultati logističke regresije:
+```{r}
+summary(logistic_model)
+```
+Varijabla spola (sexM) ima značajan utjecaj na prolaznost, pri čemu negativni koeficijent za muški spol (-1.5337) ukazuje da muški studenti imaju nižu vjerojatnost prolaska u usporedbi sa ženskim studentima. P-vrijednost od 0.0009 potvrđuje statističku značajnost ovog efekta.
+
+Studenti iz manjih obitelji (LE3) imaju nešto veću šansu za prolaz (OR = 0.6494), ali p-vrijednost od 0.1913 sugerira da ovaj rezultat nije statistički značajan.
+
+Obrazovanje majke i oca nema statistički značajan utjecaj na prolaznost, s p-vrijednostima većim od 0.99 za obje varijable, što upućuje na to da obrazovanje roditelja nije ključno za predviđanje prolaznosti u ovom skupu podataka.
+
+Bračni status roditelja (Pstatus): Koeficijent za bračni status roditelja (PstatusT) je negativan, ali nije značajan (p=0.494), što znači da bračni status roditelja nema značajan utjecaj na prolaznost.
+
+### Interpretacija koeficijenata u smislu omjera izgleda (Odds Ratio)
+```{r}
+exp(coef(logistic_model))
+```
+Omjer izgleda (Odds Ratio) za muški spol (sexM) iznosi 0.18, što znači da su muški studenti oko 82% manje vjerojatno da će položiti ispit u odnosu na ženske studente.
+
+### Predikcije
+Na temelju izgrađenog logističkog modela, izračunavamo predviđene vjerojatnosti prolaza za svakog studenta koristeći funkciju predict(). Zatim, ove vjerojatnosti pretvaramo u binarne predikcije (1 = prošao, 0 = nije prošao) pomoću ifelse() funkcije, gdje studenti s vjerojatnostima većim ili jednakim 0.5 bivaju klasificirani kao prošli, dok ostali bivaju označeni kao neprolazni.
+
+```{r}
+predicted_probabilities <- predict(logistic_model, type = "response")
+
+# Kreiranje predikcija (1 = prošao, 0 = nije prošao)
+predicted_classes <- ifelse(predicted_probabilities >= 0.5, 1, 0)
+```
+
+### Confusion Matrix
+```{r}
+confusionMatrix(
+  factor(predicted_classes, levels = c(0, 1)), 
+  studentData$passed_por
+)
+```
+Model predviđa da svi studenti prolaze ispit, što je izravna posljedica neravnoteže u podacima, gdje je većina studenata prošla ispit. Zbog ove neravnoteže, model je sklon predviđanju većinske klase (prolaz), dok zanemaruje manjinsku klasu (neprolaz). Osjetljivost (sensitivity) modela iznosi 0%, što znači da model nije u stanju prepoznati niti jednog studenta koji nije prošao ispit.
+
+### ROC krivulja za procjenu performansi modela
+Za procjenu performansi modela koristimo ROC krivulju (Receiver Operating Characteristic), koja prikazuje odnos između osjetljivosti i specifičnosti modela pri različitim pragovima odluke.
+```{r}
+roc_curve <- roc(studentData$passed_por, predicted_probabilities)
+
+# Plot ROC krivulje
+plot(roc_curve, main = "ROC krivulja", col = "blue", lwd = 2)
+cat("AUC:", auc(roc_curve), "\n")
+```
+ Na temelju AUC (Area Under the Curve) vrijednosti, koja iznosi približno 0.7604915, možemo zaključiti da model ima dobru prediktivnu sposobnost.
+
+### Zaključci
+- Spol je jedini statistički značajan prediktor u ovom modelu, pri čemu ženski studenti imaju veću vjerojatnost prolaska na ispitu u odnosu na muške studente.
+- Model je pod utjecajem neravnoteže klasa (veći broj prolaznih slučajeva), što je očito iz confusion matrice, gdje model dominantno predviđa prolaz, zanemarujući studente koji nisu prošli.
+- AUC vrijednost od 0.76 ukazuje na solidnu prediktivnu sposobnost modela, ali bilo bi potrebno dodatno razmotriti tehnike za uravnoteženje podataka (kao što su undersampling ili oversampling) kako bi model bolje prepoznavao i manjinsku klasu.
+- Vizualizacije sugeriraju da spol ima značajan utjecaj na prolaznost, dok ostale sociodemografske varijable poput veličine obitelji i obrazovanja roditelja nemaju statistički značajan utjecaj na prolaznost u ovom modelu.
+
+
+## Postoji li razlika u broju izostanaka iz nastave?
+
+Sada ćemo se fokusirati na analizu broja izostanaka kod učenika i istražiti postoji li statistička povezanost između izostanaka i određenih sociodemografskih faktora. Za početak, izvršit ćemo nekoliko manipulacija podacima kako bismo ih pripremili za daljnju analizu.
+
+### Uređivanje podataka i provjera normalnosti 
+
+Za početak zbrajamo izostanke iz matematike i izostanke iz portugalskog jezika te gledamo ukupan broj izostanaka. Također provjeravamo normalnost podataka i vizualiziramo distribuciju izostanaka pomoću histograma. 
+```{r}
+studentData$total_absences <- studentData$absences_mat + studentData$absences_por
+
+ggplot(studentData, aes(x = total_absences)) +
+  geom_histogram(binwidth = 1, fill = "lightblue", color = "black", alpha = 0.7) +
+  labs(
+    title = "Distribucija izostanaka",
+    x = "Broj izostanaka",
+    y = "Broj učenika"
+  ) +
+  theme_minimal()
+``` 
+Zbog primjetne vidljivosti stršećih vrijednosti, radimo IQR metodu za odbacivanje stršećih vrijednosti u svrhu normaliziranja distribucije te prikazujemo histogram s podacima bez stršećih vrijednosti.
+
+```{r}
+Q1 <- quantile(studentData$total_absences, 0.25)
+Q3 <- quantile(studentData$total_absences, 0.75)
+IQR <- Q3 - Q1
+
+lower_bound <- Q1 - 1.5 * IQR
+upper_bound <- Q3 + 1.5 * IQR
+
+cleaned_data <- studentData[studentData$total_absences >= 
+                              lower_bound & studentData$total_absences <= upper_bound, ]
+
+hist(cleaned_data$total_absences, main = "Histogram ukupnih izostanaka",
+     xlab = "Total Absences", col = "skyblue", border = "black")
+```
+Iako smo uspješno eliminirali stršeće vrijednosti, iz histograma je vidljivo da podaci nisu normalno distribuirani te za dodatnu provjeru normalnosti provodimo Shapiro-Wilk test nad podacima sa i bez stršećih vrijednosti.
+
+```{r}
+shapiro.test(studentData$total_absences)
+shapiro.test(cleaned_data$total_absences)
+
+```
+U oba slučaja, dobili smo jako malenu p-vrijednost te možemo potvrditi da podaci nisu normalno distribuirani s razinom značajnosti 0.05. Iz tog razloga, za daljnje analize koristit ćemo podatke koji uključuju stršeće vrijednosti jer želimo analizirati ponašanje svih učenika. 
+
+### Odnos između izostanaka i mjesta stanovanja
+
+Intuitivna ideja za ispitivanje razlike u broju izostanaka bila je ispitati postoji li statistička značajnost između ukupnog broja izostanaka i mjesta stanovanja. Na temelju ideje postavljamo zadane hipoteze:
+
+$H_0:Nema~ razlike~ u~ iznosu~ izostanaka~ između~ učenika~ iz~ ruralnih~ i~ urbanih~ područja$
+
+$H_1:Učenici~ iz~ ruralnih~ područja~ imaju~ veći~ broj~ izostanaka~ od~ učenika~ iz~ urbanih~ područja$
+
+### Provođenje testa: 
+S obzirom da podaci o izostancima nemaju normalnu distribuciju, koristit ćemo neparametarski Mann-Whitney U test, poznatiji i kao Wilcoxon rank sum test:
+```{r}
+wilcox_result <- wilcox.test(total_absences ~ address, data = studentData)
+print(wilcox_result)
+```
+### Zaključak 
+
+Dobivena p-vrijednost (gledamo p-vrijednost / 2 zbog korištenja jednostranog testa) veća je od 0.05 što znači da ne možemo odbaciti hipotezu H0, odnosno ne postoji statistički značajna razlika u broju izostanaka između učenika iz ruralnih i urbanih područja. Rezultat prikazujemo koristeći box plot. 
+
+```{r}
+ggplot(studentData, aes(x = address, y = total_absences, fill = address)) + 
+  geom_boxplot(color = "black", alpha = 0.7) + 
+  labs(
+    title = "Distribucija ukupnih izostanaka po mjestu stanovanja",
+    x = "Mjesto stanovanja",
+    y = "Ukupni izostanci"
+  ) + 
+  scale_fill_manual(values = c("lightgreen", "lightcoral")) + 
+  theme_minimal()
+```
+
+### Utjecaj konzumiranja alkohola na broj izostanaka
+
+Analizirat ćemo kako konzumacija alkohola tijekom tjedna utječe na razliku u broju izostanaka iz nastave. Za ovu analizu koristit ćemo varijablu Walc (weekend alcohol consumption), koja je numerička i mjeri učestalost konzumacije alkohola tijekom vikenda, s vrijednostima od 1 (vrlo niska) do 5 (vrlo visoka). Na temelju ovoga postavljamo sljedeće hipoteze:
+
+$H_0:Ne~ postoji~ razlika~ u~ distribuciji~ između~ različitih~ grupa~ konzumacije~ alkohola~ tijekom~ tjedna$
+
+$H_1:Postoji~ razlika~ u~ distribuciji~ između~ različitih~ grupa~ konzumacije~ alkohola~ tijekom~ tjedna$
+
+### Provođenje testa:
+Budući da podaci o izostancima nisu normalno distribuirani koristimo neparametarsku metodu kako bismo provjerili postoji li statistički značajna razlika u distribuciji izostanaka između grupa. 
+Provodimo Kruskal-Wallis test za razliku u broju izostanaka iz nastave u odnosu na konzumaciju alkohola tijekom tjedna. 
+```{r}
+kruskal_test_alcohol <- kruskal.test(total_absences ~ Dalc, data = studentData)
+print(kruskal_test_alcohol)
+``` 
+Budući da je p-vrijednost < 0.05 odbacujemo nultu hipotezu te možemo zaključiti da postoji statistički značajna razlika u izostancima između grupa. Ovaj test ne daje izravno odgovor na to je li viša konzumacija alkohola povezana s većim brojem izostanaka, ali daje pokazatelj da razlike u izostancima postoje među grupama.
+
+### Post-hoc analiza
+Nakon što smo dokazali postojanje razlika pomoću Kruskal-Wallis testa napravit ćemo post-hoc analizu kako bismo razjasnili koje se grupe međusobno razlikuju. Za to ćemo koristiti Pairwise Wilcoxon rank sum test koji uzima svaki par grupa iz podataka o konzumaciji alkohola i uspoređuje ih statistički koristeći Wilcoxon rank sum test. Bitno je napomenuti da smo postavili ograničenje na egzaktno računanje p-vrijednosti s postavljanjem varijable $exact = FALSE$ budući da podaci koje računamo sadrže puno ponovljenih vrijednosti. Hipoteze koje testiramo s Pairwise Wilcoxon rank sum testom su sljedeće:
+
+$H_0:Ne~ postoji~ razlika~ u~ distribuciji~ izostanaka~ između~ dviju~ grupa$
+
+$H_1:Postoji~ razlika~ u~ distribuciji~ izostanaka~ između~ dviju~ grupa$
+
+### Provođenje testa:
+```{r}
+pairwise_wilcox_alcohol <- pairwise.wilcox.test(studentData$total_absences,
+                                                studentData$Dalc, 
+                                                p.adjust.method = "BH", exact = FALSE)
+
+print(pairwise_wilcox_alcohol)
+```
+### Analiza rezultata:
+
+Na temelju p-vrijednosti između grupa zaključujemo da postoji statistički značajna razlika u broju izostanak između grupe 1 i grupe 3 jer je p-vrijednost manja od 0.05 te odbacujemo hipotezu H0, koja tvrdi suprotno. Rezultate analize prikazujemo koristeći box plot. 
+
+```{r}
+ggplot(studentData, aes(x = factor(Dalc), y = total_absences, fill = factor(Dalc))) +
+  geom_boxplot() +
+  labs(
+    title = "Box plot izostanaka u odnosu na konzumaciju alkohola tjedno",
+    x = "Konzumacija alkohola tjedno",
+    y = "Izostanci"
+  ) +
+  scale_fill_brewer(palette = "Set3", labels = c("Vrlo rijetko", 
+                              "Rijetko", "Umjereno", "Često", "Vrlo često")) +
+  theme_minimal() +
+  theme(legend.position = "none") 
+```
+Ova razlika može ukazivati na to da povećanje konzumacije alkohola između "vrlo rijetko" i "umjereno" može imati neki utjecaj na broj izostanaka. Dakle, studenti u grupi 3 (umjereno) mogu imati više izostanaka od onih u grupi 1 (vrlo rijetko). Kakogod, primjećujemo da nema statistički značajnih razlika između grupa 1 i 4 ili grupa 1 i 5. To može biti zato što su distribucije podataka unutar tih grupa sličnije nego što je to slučaj između grupa 1 i 3.
+
+### Zaključak
+Ukratko, iako postoji statistički značajna razlika u izostancima između grupa 1 i 3, odnosno povećana konzumacija alkohola tijekom tjedna može biti povezana s većim brojem izostanaka, ta povezanost nije dovoljno jaka kako bismo mogli dovesti zaključak nad cijelim skupom podataka. 
+
+
+\newpage
+# Zaključak
+Pokazali smo da muški studenti imaju višu prosječnu završnu ocjenu iz matematike u odnosu na žene, dok nije utvrđena značajna razlika u početnim ocjenama iz matematike između studenata iz urbanih i ruralnih područja. Također smo pokušali izgraditi model logističke regresije kako bismo predvidjeli prolaz na završnom ispitu iz jezika temeljen na sociodemografskim faktorima. Rezultati modela pokazali su da je spol jedini statistički značajan prediktor prolaznosti, pri čemu ženske studente imaju veću vjerojatnost prolaska na ispitu u odnosu na muške. Model je bio pod utjecajem neravnoteže klasa, budući da većina studenata prolazi ispit, što je vidljivo u confusion matrici gdje model dominantno predviđa prolaz. AUC vrijednost od 0.76 pokazuje solidnu prediktivnu sposobnost modela, no kako bi model bolje prepoznao manjinsku klasu, preporučuje se daljnja primjena tehnika uravnoteženja podataka poput undersampling ili oversampling. 
+
+Na kraju, istražena je povezanost između broja izostanaka i mjesta stanovanja, kao i konzumacije alkohola tijekom tjedna. Rezultati nisu pokazali značajnu razliku u broju izostanaka između studenata iz urbanih i ruralnih područja, ali su ukazali na to da povećana konzumacija alkohola može biti povezana s većim brojem izostanaka. Iako je analiza konzumacije alkohola sugerirala postojanje povezanosti, potrebna su daljnja istraživanja kako bi se donijeli čvrsti zaključci.
+
+***
+
