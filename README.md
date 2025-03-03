@@ -11,7 +11,7 @@ To achieve this, we explored multiple research questions:
 
 By investigating these questions, we aimed to uncover insights that could help educators, parents, and students better understand the factors affecting academic performance.
 
-Final reports from our analysis are stored in the `final_reports` directory.
+Final reports from our analysis are stored in the `final_report` directory.
 
 ---
 
