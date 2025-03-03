@@ -1,78 +1,94 @@
-# **Variable Legend**
+# **Project Description and Dataset Overview**
 
-Ovdje su objašnjenja za varijable u vašem skupu podataka. 
+## **Project Description**
+In this project, we analyzed student performance by examining various demographic, academic, and behavioral factors. Our goal was to identify patterns and relationships that influence academic success in key subjects such as mathematics and Portuguese. 
 
----
+To achieve this, we explored multiple research questions:
+- Are the average final grades in mathematics different between genders?
+- Is there a difference in the first mathematics grade based on students' place of residence?
+- Can we predict passing the final language exam based on socio-demographic variables such as gender, parental education, and family size?
+- Is there a difference in the number of absences from classes?
 
-### **Demografske informacije**
-- **school**: Škola učenika (binarno: 'GP' – Gabriel Pereira, 'MS' – Mousinho da Silveira)  
-- **sex**: Spol učenika (binarno: 'F' – ženski, 'M' – muški)  
-- **age**: Dob učenika (numerički: od 15 do 22 godine)  
-- **address**: Tip kućne adrese učenika (binarno: 'U' – urbano, 'R' – ruralno)  
-- **famsize**: Veličina obitelji (binarno: 'LE3' – manje ili jednako 3, 'GT3' – više od 3)  
-- **Pstatus**: Status suživota roditelja (binarno: 'T' – žive zajedno, 'A' – odvojeni)  
+By investigating these questions, we aimed to uncover insights that could help educators, parents, and students better understand the factors affecting academic performance.
 
----
-
-### **Obrazovanje roditelja**
-- **Medu**: Majčina razina obrazovanja (numerički: 0 – bez obrazovanja, 1 – osnovno obrazovanje (4. razred), 2 – 5. do 9. razreda, 3 – srednjoškolsko obrazovanje, 4 – visoko obrazovanje)  
-- **Fedu**: Očeva razina obrazovanja (numerički: 0 – bez obrazovanja, 1 – osnovno obrazovanje (4. razred), 2 – 5. do 9. razreda, 3 – srednjoškolsko obrazovanje, 4 – visoko obrazovanje)  
+Final reports from our analysis are stored in the `final_reports` directory.
 
 ---
 
-### **Zanimanje roditelja**
-- **Mjob**: Majčino zanimanje (nominalno: 'teacher' – učitelj, 'health' – zdravstvena skrb, 'civil services' – civilne usluge (npr. administracija ili policija), 'at home' – kod kuće, 'other' – drugo)  
-- **Fjob**: Očevo zanimanje (nominalno: 'teacher' – učitelj, 'health' – zdravstvena skrb, 'civil services' – civilne usluge (npr. administracija ili policija), 'at home' – kod kuće, 'other' – drugo)  
+## **Dataset Overview**
+The dataset we worked with contains information about students' demographic characteristics, educational habits, and grades. It includes variables related to students' personal background, parental education, school choices, study habits, and academic performance.
 
 ---
 
-### **Odabir škole i školski uvjeti**
-- **reason**: Razlog odabira škole (nominalno: 'close to home' – blizu kuće, 'school reputation' – ugled škole, 'course preference' – preferencija tečaja, 'other' – drugo)  
-- **guardian**: Učiteljev skrbnik (nominalno: 'mother' – majka, 'father' – otac, 'other' – drugi)  
+### **Demographic Information**
+- **school**: Student’s school (`'GP'` – Gabriel Pereira, `'MS'` – Mousinho da Silveira)  
+- **sex**: Student’s gender (`'F'` – female, `'M'` – male)  
+- **age**: Student’s age (ranging from `15` to `22` years)  
+- **address**: Type of home address (`'U'` – urban, `'R'` – rural)  
+- **famsize**: Family size (`'LE3'` – less than or equal to 3, `'GT3'` – greater than 3)  
+- **Pstatus**: Parent's cohabitation status (`'T'` – living together, `'A'` – apart)  
 
 ---
 
-### **Vrijeme i način učenja**
-- **traveltime**: Vrijeme putovanja od kuće do škole (numerički: 1 – manje od 15 minuta, 2 – 15 do 30 minuta, 3 – 30 minuta do 1 sat, 4 – više od 1 sat)  
-- **studytime**: Tjedno vrijeme provedeno u učenju (numerički: 1 – manje od 2 sata, 2 – 2 do 5 sati, 3 – 5 do 10 sati, 4 – više od 10 sati)  
-- **failures_mat**: Broj neuspjeha u prošlim matematičkim predmetima (numerički: n ako je 0 ≤ n ≤ 3, inače 4)  
-- **failures_por**: Broj neuspjeha u prošlim portugalskim predmetima (numerički: n ako je 0 ≤ n ≤ 3, inače 4)  
+### **Parental Education**
+- **Medu**: Mother’s education level (`0` – no education, `1` – primary education (4th grade), `2` – 5th to 9th grade, `3` – secondary education, `4` – higher education)  
+- **Fedu**: Father’s education level (`0` – no education, `1` – primary education (4th grade), `2` – 5th to 9th grade, `3` – secondary education, `4` – higher education)  
 
 ---
 
-### **Podrška i aktivnosti**
-- **schoolsup**: Dodatna edukativna podrška (binarno: 'yes' – da, 'no' – ne)  
-- **famsup**: Obiteljska edukativna podrška (binarno: 'yes' – da, 'no' – ne)  
-- **paid_mat**: Dodatni plaćeni časovi iz matematike (binarno: 'yes' – da, 'no' – ne)  
-- **paid_por**: Dodatni plaćeni časovi iz portugalskog jezika (binarno: 'yes' – da, 'no' – ne)  
-- **activities**: Izvanškolske aktivnosti (binarno: 'yes' – da, 'no' – ne)  
-- **nursery**: Pohađanje vrtića (binarno: 'yes' – da, 'no' – ne)  
-- **higher**: Želja za upisom na više obrazovanje (binarno: 'yes' – da, 'no' – ne)  
-- **internet**: Pristup internetu kod kuće (binarno: 'yes' – da, 'no' – ne)  
-- **romantic**: U romantnoj vezi (binarno: 'yes' – da, 'no' – ne)  
+### **Parental Occupation**
+- **Mjob**: Mother’s occupation (`'teacher'`, `'health'`, `'civil services'`, `'at home'`, `'other'`)  
+- **Fjob**: Father’s occupation (`'teacher'`, `'health'`, `'civil services'`, `'at home'`, `'other'`)  
 
 ---
 
-### **Osobna i socijalna dobrobit**
-- **famrel**: Kvaliteta obiteljskih odnosa (numerički: od 1 – vrlo loši do 5 – izvrsni)  
-- **freetime**: Slobodno vrijeme nakon škole (numerički: od 1 – vrlo nisko do 5 – vrlo visoko)  
-- **goout**: Izlasci s prijateljima (numerički: od 1 – vrlo nisko do 5 – vrlo visoko)  
+### **School Selection and Conditions**
+- **reason**: Reason for choosing the school (`'close to home'`, `'school reputation'`, `'course preference'`, `'other'`)  
+- **guardian**: Student’s guardian (`'mother'`, `'father'`, `'other'`)  
 
 ---
 
-### **Ponašanje i zdravlje**
-- **Dalc**: Konzumacija alkohola tijekom radnog tjedna (numerički: od 1 – vrlo nisko do 5 – vrlo visoko)  
-- **Walc**: Konzumacija alkohola tijekom vikenda (numerički: od 1 – vrlo nisko do 5 – vrlo visoko)  
-- **health**: Trenutno zdravlje (numerički: od 1 – vrlo loše do 5 – vrlo dobro)  
+### **Time and Study Habits**
+- **traveltime**: Travel time from home to school (`1` – less than 15 minutes, `2` – 15 to 30 minutes, `3` – 30 minutes to 1 hour, `4` – more than 1 hour)  
+- **studytime**: Weekly study time (`1` – less than 2 hours, `2` – 2 to 5 hours, `3` – 5 to 10 hours, `4` – more than 10 hours)  
+- **failures_mat**: Number of past failures in mathematics (`n` if `0 ≤ n ≤ 3`, otherwise `4`)  
+- **failures_por**: Number of past failures in Portuguese (`n` if `0 ≤ n ≤ 3`, otherwise `4`)  
 
 ---
 
-### **Školski izostanci i ocjene**
-- **absences_mat**: Broj izostanaka u matematici (numerički: od 0 do 93)  
-- **absences_por**: Broj izostanaka iz portugalskog jezika (numerički: od 0 do 93)  
-- **G1_mat**: Ocjena iz matematike za prvi period (numerički: od 0 do 20)  
-- **G2_mat**: Ocjena iz matematike za drugi period (numerički: od 0 do 20)  
-- **G3_mat**: Konačna ocjena iz matematike (numerički: od 0 do 20)  
-- **G1_por**: Ocjena iz portugalskog za prvi period (numerički: od 0 do 20)  
-- **G2_por**: Ocjena iz portugalskog za drugi period (numerički: od 0 do 20)  
-- **G3_por**: Konačna ocjena iz portugalskog (numerički: od 0 do 20)
+### **Support and Activities**
+- **schoolsup**: Additional educational support (`'yes'`, `'no'`)  
+- **famsup**: Family educational support (`'yes'`, `'no'`)  
+- **paid_mat**: Extra paid classes in mathematics (`'yes'`, `'no'`)  
+- **paid_por**: Extra paid classes in Portuguese (`'yes'`, `'no'`)  
+- **activities**: Extracurricular activities (`'yes'`, `'no'`)  
+- **nursery**: Attended nursery school (`'yes'`, `'no'`)  
+- **higher**: Aspiration to pursue higher education (`'yes'`, `'no'`)  
+- **internet**: Internet access at home (`'yes'`, `'no'`)  
+- **romantic**: In a romantic relationship (`'yes'`, `'no'`)  
+
+---
+
+### **Personal and Social Well-being**
+- **famrel**: Quality of family relationships (`1` – very bad to `5` – excellent)  
+- **freetime**: Free time after school (`1` – very low to `5` – very high)  
+- **goout**: Going out with friends (`1` – very low to `5` – very high)  
+
+---
+
+### **Behavior and Health**
+- **Dalc**: Alcohol consumption on weekdays (`1` – very low to `5` – very high)  
+- **Walc**: Alcohol consumption on weekends (`1` – very low to `5` – very high)  
+- **health**: Current health status (`1` – very bad to `5` – very good)  
+
+---
+
+### **School Absences and Grades**
+- **absences_mat**: Number of absences in mathematics (`0` to `93`)  
+- **absences_por**: Number of absences in Portuguese (`0` to `93`)  
+- **G1_mat**: First-period grade in mathematics (`0` to `20`)  
+- **G2_mat**: Second-period grade in mathematics (`0` to `20`)  
+- **G3_mat**: Final grade in mathematics (`0` to `20`)  
+- **G1_por**: First-period grade in Portuguese (`0` to `20`)  
+- **G2_por**: Second-period grade in Portuguese (`0` to `20`)  
+- **G3_por**: Final grade in Portuguese (`0` to `20`)  
